@@ -47,6 +47,26 @@ def apply_deepseek_v4_defaults(server_args: ServerArgs, model_arch: str) -> None
     """Apply DeepSeek V4 environment defaults, request limits, and validation."""
     cfg = resolving_view(server_args)
 
+    if (
+        cfg.enable_two_batch_overlap
+        and get_platform().is_cuda
+        and cfg.moe_a2a_backend == "none"
+        and cfg.attn_cp_size == 1
+        and not cfg.enable_prefill_cp
+        and cfg.tp_size // cfg.attn_dp_size > 1
+    ):
+        # Alternatively, reject the explicit TBO request instead of overriding it:
+        # raise ValueError(
+        #     "TBO is unnecessary for best performance in this configuration. "
+        #     "Remove --enable-two-batch-overlap."
+        # )
+        logger.warning(
+            "TBO is unnecessary for best performance in this configuration; disabling it."
+        )
+        declare_resolution(
+            server_args, "apply_deepseek_v4_defaults", enable_two_batch_overlap=False
+        )
+
     # FlashMLA sparse prefill (SGLANG_OPT_FLASHMLA_SPARSE_PREFILL, default on)
     # currently returns incorrect output for DeepSeek-V4-Flash on ROCm/HIP
     # (MI355X), which breaks the disaggregation nightly. Keep the previous
